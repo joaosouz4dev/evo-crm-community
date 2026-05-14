@@ -1,4 +1,5 @@
 .env
 _evo*
 
-.claude/commands/*
+.claude/*
+CLAUDE.md
