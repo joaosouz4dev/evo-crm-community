@@ -3,3 +3,5 @@ _evo*
 
 .claude/*
 CLAUDE.md
+
+docker-compose.local.yaml
