@@ -71,6 +71,9 @@ services:
       RAILS_ENV: ${RAILS_ENV:-development}
       REDIS_URL: redis://:${REDIS_PASSWORD:-evoai_redis_pass}@redis:6379/1
       POSTGRES_HOST: postgres
+      # EVO-1999: this service's command already runs db:create && db:migrate, and
+      # the image migrates on boot (entrypoint). RUN_MIGRATIONS=false avoids doubling.
+      RUN_MIGRATIONS: "false"
     volumes:
       - ./evo-auth-service-community/storage:/rails/storage
     depends_on:
@@ -96,6 +99,8 @@ services:
       RAILS_ENV: ${RAILS_ENV:-development}
       REDIS_URL: redis://:${REDIS_PASSWORD:-evoai_redis_pass}@redis:6379/1
       POSTGRES_HOST: postgres
+      # EVO-1999: sidekiq must not run migrations (the web service already covers it).
+      RUN_MIGRATIONS: "false"
     depends_on:
       postgres:
         condition: service_healthy
@@ -127,6 +132,8 @@ services:
       POSTGRES_HOST: postgres
       EVO_AUTH_SERVICE_URL: http://evo-auth:3001
       EVO_AI_CORE_SERVICE_URL: http://evo-core:5555
+      # Same Fernet key core/processor read as ENCRYPTION_KEY; the CRM encrypts AI credentials with it.
+      EVO_AI_ENCRYPTION_KEY: ${ENCRYPTION_KEY:-XoQPOBw2FrzjQS11utERG9qO2MsAnXFxlhIns_uUxRk=}
       BOT_RUNTIME_URL: http://evo-bot-runtime:8080
       BOT_RUNTIME_SECRET: ${BOT_RUNTIME_SECRET:-evo-bot-runtime-dev-secret}
       BOT_RUNTIME_POSTBACK_BASE_URL: http://evo-crm:3000
@@ -170,9 +177,13 @@ services:
       POSTGRES_HOST: postgres
       EVO_AUTH_SERVICE_URL: http://evo-auth:3001
       EVO_AI_CORE_SERVICE_URL: http://evo-core:5555
+      # Same Fernet key core/processor read as ENCRYPTION_KEY; the CRM encrypts AI credentials with it.
+      EVO_AI_ENCRYPTION_KEY: ${ENCRYPTION_KEY:-XoQPOBw2FrzjQS11utERG9qO2MsAnXFxlhIns_uUxRk=}
       BOT_RUNTIME_URL: http://evo-bot-runtime:8080
       BOT_RUNTIME_SECRET: ${BOT_RUNTIME_SECRET:-evo-bot-runtime-dev-secret}
       BOT_RUNTIME_POSTBACK_BASE_URL: http://evo-crm:3000
+      # EVO-1999: sidekiq must not prepare the database (the web covers it via db:prepare).
+      RUN_MIGRATIONS: "false"
     volumes:
       - ./evo-ai-crm-community:/app:delegated
       - crm_bundle:/usr/local/bundle
@@ -188,7 +199,8 @@ services:
     # Disable inherited HTTP healthcheck — Sidekiq has no web server.
     healthcheck:
       disable: true
-    entrypoint: docker/entrypoints/rails.sh
+    # LOW (review): no explicit entrypoint — the image ENTRYPOINT is already
+    # docker/entrypoints/rails.sh (EVO-1999); RUN_MIGRATIONS=false skips db:prepare.
     command: ["bundle", "exec", "sidekiq", "-C", "config/sidekiq.yml"]
 
   # ---------------------------------------------------------------------------
@@ -280,6 +292,10 @@ services:
       REDIS_URL: redis://:${REDIS_PASSWORD:-evoai_redis_pass}@redis:6379
       AI_PROCESSOR_URL: http://evo-processor:8000
       BOT_RUNTIME_SECRET: ${BOT_RUNTIME_SECRET:-evo-bot-runtime-dev-secret}
+      # Hosts allowed to serve incoming media. Must cover the host the CRM signs
+      # attachment URLs with (ACTIVE_STORAGE_URL, or BACKEND_URL when unset), or
+      # the agent receives no media at all.
+      MEDIA_HOST_ALLOWLIST: ${MEDIA_HOST_ALLOWLIST:-localhost}
     depends_on:
       redis:
         condition: service_healthy
